@@ -1,0 +1,284 @@
+%pip install google-colab
+from google.colab import drive
+drive.mount('/content/gdrive')
+
+#ensure the file is accessible
+!ls /content/gdrive/'My Drive'/'Colab Notebooks'/temp
+
+import os
+os.environ['GOOGLE_APPLICATION_CREDENTIALS']='/content/gdrive/My Drive/Colab Notebooks/temp/speech-to-text-api-key.json'
+
+#ensure the path is set correctly
+!echo $GOOGLE_APPLICATION_CREDENTIALS
+
+%pip install --upgrade google-cloud-speech
+
+%pip install pydub
+%pip install sox
+!apt -qq install -y sox
+
+#Now we will be transforming the audio files and getting them ready to send to the Google Speech-to-Text API. 
+#The next section of code converts the .mp3 files to .wav files, and then the .wav files to mono audio .wav files with sample rate 44100 Hertz. 
+#Unless the audio files are in this format, the Google Speech-to-Text API will not accept them
+
+# STEP 1: Convert .mp3 to .wav file
+# STEP 2: Use subprocess + sox to convert .wav file into MONO .wav file, make sure sample_rate_hertz = 44100
+import subprocess
+import os
+from pydub import AudioSegment
+# dir
+dirname = '/content/gdrive/My Drive/Colab Notebooks/temp/tbd_convert/'
+# function that takes a file and converts to the mono version
+def convert_audio(filename):
+# files
+  filenamesplit = os.path.splitext(filename)[0]
+  filenamewav = filenamesplit + '.wav'
+  print(filenamewav)
+  newfilename = "mono_" + filenamewav
+# convert mp3 to wav                                                            
+  sound = AudioSegment.from_mp3(dirname + filename)
+  sound.export(dirname + filenamewav, format="wav")
+# convert wav to wav mono
+  command2 = ['sox',dirname + filenamewav,'-c','1',dirname + newfilename]
+  subprocess.Popen(command2)
+for filename in os.listdir(dirname):
+  print(filename)
+  print("Starting...")
+  convert_audio(filename)
+  print("Completed!!")
+  
+  #Next, we will copy all the files from the tbd_convert folder into the empty Google Cloud Storage bucket we set up earlier using the lines of code below
+    %pip install google-colab
+# STEP 3: Copies all files from temp/tbd_convert folder into Google Cloud Storage bucket
+from google.colab import auth
+from google.cloud import storage
+auth.authenticate_user()
+project_id = 'transcribe-310719-5db0432fc79c'
+!gcloud config set project {project_id}
+!gsutil ls
+bucket_name = 'mica-transcribe'
+!gsutil -m cp -r https://console.cloud.google.com/storage/browser/mica-transcribe?project=transcribe-310719
+
+%pip install --upgrade google-cloud-storage
+%pip install google-cloud-speech
+
+# TEST
+from google.cloud import storage
+project_id = 'transcribe-310719-5db0432fc79c'
+bucket_name = 'mica-transcribe'
+storage_client = storage.Client(project_id)
+blobs = storage_client.list_blobs(bucket_name)
+def list_blobs(bucket_name):
+    """Lists all the blobs in the bucket."""
+# Note: Client.list_blobs requires at least package version 1.17.0.
+    for blob in blobs:
+      print(blob.name)
+list_blobs(bucket_name)
+
+%pip install google-cloud-texttospeech
+%pip install pyYAML==3.12 awsebcli --upgrade
+%pip install google-cloud-texttospeech
+
+
+# Understanding the Problem Statement for our Speech-to-Text Project
+# Let’s understand the problem statement of our project before we move into the implementation part.
+# We might be on the verge of having too many screens around us. It seems like every day, new versions of common objects are “re-invented” with built-in wifi and bright touchscreens. A promising antidote to our screen addiction is voice interfaces.
+# TensorFlow recently released the Speech Commands Datasets. It includes 65,000 one-second long utterances of 30 short words, by thousands of different people. We’ll build a speech recognition system that understands simple spoken commands.
+# You can download the dataset from here.
+# Implementing the Speech-to-Text Model in Python
+# The wait is over! It’s time to build our own Speech-to-Text model from scratch.
+#Import the libraries
+# First, import all the necessary libraries into our notebook. LibROSA and SciPy are the Python libraries used for processing audio signals.
+
+import os
+import librosa
+import IPython.display as ipd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.io import wavfile
+import warnings
+warnings.filterwarnings("ignore")
+os.listdir('D:\Speech-Recognition-master')
+
+#Data Exploration and Visualization
+#Data Exploration and Visualization helps us to understand the data as well as pre-processing steps in a better way.
+#Visualization of Audio signal in time series domain
+#Now, we’ll visualize the audio signal in the time series domain:
+
+import librosa
+train_audio_path =(r"C:\Users\user\4 Minute Lecture Transcription - Assignment.mp3")
+samples, sample_rate = librosa.load(train_audio_path+'yes/0a7c2a8d_nohash_0.wav', sr = 16000)
+fig = plt.figure(figsize=(14, 8))
+ax1 = fig.add_subplot(211)
+ax1.set_title('Raw wave of ' + '../input/train/audio/yes/0a7c2a8d_nohash_0.wav')
+ax1.set_xlabel('time')
+ax1.set_ylabel('Amplitude')
+ax1.plot(np.linspace(0, sample_rate/len(samples), sample_rate), samples)
+ipd.Audio(samples, rate=sample_rate)
+print(sample_rate)
+samples = librosa.resample(samples, sample_rate, 8000)
+ipd.Audio(samples, rate=8000)
+labels=os.listdir(train_audio_path)
+
+#find count of each label and plot bar graph
+no_of_recordings=[]
+for label in labels:
+    waves = [f for f in os.listdir(train_audio_path + '/'+ label) if f.endswith('.wav')]
+    no_of_recordings.append(len(waves))
+    
+#plot
+plt.figure(figsize=(30,5))
+index = np.arange(len(labels))
+plt.bar(index, no_of_recordings)
+plt.xlabel('Commands', fontsize=12)
+plt.ylabel('No of recordings', fontsize=12)
+plt.xticks(index, labels, fontsize=15, rotation=60)
+plt.title('No. of recordings for each command')
+plt.show()
+
+labels=["yes", "no", "up", "down", "left", "right", "on", "off", "stop", "go"]
+
+#Preprocessing the audio waves
+#In the data exploration part earlier, we have seen that the duration of a few recordings is less than 1 second and the sampling rate is too high. So, let us read the audio waves and use the below-preprocessing steps to deal with this.
+#Here are the two steps we’ll follow:
+#Resampling
+#Removing shorter commands of less than 1 second
+#Let us define these preprocessing steps in the below code snippet:
+train_audio_path = '../input/tensorflow-speech-recognition-challenge/train/audio/'
+
+all_wave = []
+all_label = []
+for label in labels:
+    print(label)
+    waves = [f for f in os.listdir(train_audio_path + '/'+ label) if f.endswith('.wav')]
+    for wav in waves:
+        samples, sample_rate = librosa.load(train_audio_path + '/' + label + '/' + wav, sr = 16000)
+        samples = librosa.resample(samples, sample_rate, 8000)
+        if(len(samples)== 8000) : 
+            all_wave.append(samples)
+            all_label.append(label)
+            
+  #Convert the output labels to integer encoded:
+  from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+y=le.fit_transform(all_label)
+classes= list(le.classes_)
+
+from keras.utils import np_utils
+y=np_utils.to_categorical(y, num_classes=len(labels))
+all_wave = np.array(all_wave).reshape(-1,8000,1)
+
+#Split into train and validation set.Next, we will train the model on 80% of the data and validate on the remaining 20%:
+from sklearn.model_selection import train_test_split
+x_tr, x_val, y_tr, y_val = train_test_split(np.array(all_wave),np.array(y),stratify=y,test_size = 0.2,random_state=777,shuffle=True)
+
+#Model Architecture for this problem
+#We will build the speech-to-text model using conv1d. Conv1d is a convolutional neural network which performs the convolution along only one dimension.
+#Model building
+#Let us implement the model using Keras functional API.
+from keras.layers import Dense, Dropout, Flatten, Conv1D, Input, MaxPooling1D
+from keras.models import Model
+from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras import backend as K
+K.clear_session()
+
+inputs = Input(shape=(8000,1))
+
+#First Conv1D layer
+conv = Conv1D(8,13, padding='valid', activation='relu', strides=1)(inputs)
+conv = MaxPooling1D(3)(conv)
+conv = Dropout(0.3)(conv)
+
+#Second Conv1D layer
+conv = Conv1D(16, 11, padding='valid', activation='relu', strides=1)(conv)
+conv = MaxPooling1D(3)(conv)
+conv = Dropout(0.3)(conv)
+
+#Third Conv1D layer
+conv = Conv1D(32, 9, padding='valid', activation='relu', strides=1)(conv)
+conv = MaxPooling1D(3)(conv)
+conv = Dropout(0.3)(conv)
+
+#Fourth Conv1D layer
+conv = Conv1D(64, 7, padding='valid', activation='relu', strides=1)(conv)
+conv = MaxPooling1D(3)(conv)
+conv = Dropout(0.3)(conv)
+
+#Flatten layer
+conv = Flatten()(conv)
+
+#Dense Layer 1
+conv = Dense(256, activation='relu')(conv)
+conv = Dropout(0.3)(conv)
+
+#Dense Layer 2
+conv = Dense(128, activation='relu')(conv)
+conv = Dropout(0.3)(conv)
+
+outputs = Dense(len(labels), activation='softmax')(conv)
+
+model = Model(inputs, outputs)
+model.summary()
+#Define the loss function to be categorical cross-entropy since it is a multi-classification problem:
+model.compile(loss='categorical_crossentropy',optimizer='adam',metrics=['accuracy'])
+#Early stopping and model checkpoints are the callbacks to stop training the neural network at the right time and to save the best model after every epoch:
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=10, min_delta=0.0001) 
+mc = ModelCheckpoint('best_model.hdf5', monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+#Let us train the model on a batch size of 32 and evaluate the performance on the holdout set:
+history=model.fit(x_tr, y_tr ,epochs=100, callbacks=[es,mc], batch_size=32, validation_data=(x_val,y_val))
+
+#Diagnostic plot
+#I’m going to lean on visualization again to understand the performance of the model over a period of time:
+from matplotlib import pyplot
+pyplot.plot(history.history['loss'], label='train')
+pyplot.plot(history.history['val_loss'], label='test')
+pyplot.legend()
+pyplot.show()
+
+#Loading the best model
+from keras.models import load_model
+model=load_model('best_model.hdf5')
+
+#Define the function that predicts text for the given audio:
+def predict(audio):
+    prob=model.predict(audio.reshape(1,8000,1))
+    index=np.argmax(prob[0])
+    return classes[index]
+    
+    #Prediction time! Make predictions on the validation data:
+    import random
+index=random.randint(0,len(x_val)-1)
+samples=x_val[index].ravel()
+print("Audio:",classes[np.argmax(y_val[index])])
+ipd.Audio(samples, rate=8000)
+print("Text:",predict(samples))
+
+
+#Here is a script that prompts a user to record voice commands. Record your own voice commands and test it on the model:
+import sounddevice as sd
+import soundfile as sf
+
+samplerate = 16000  
+duration = 1 # seconds
+filename = 'yes.wav'
+print("start")
+mydata = sd.rec(int(samplerate * duration), samplerate=samplerate,
+    channels=1, blocking=True)
+print("end")
+sd.wait()
+sf.write(filename, mydata, samplerate)
+
+#Let us now read the saved voice command and convert it to text:
+os.listdir('../input/voice-commands/prateek_voice_v2')
+filepath='../input/voice-commands/prateek_voice_v2'
+#reading the voice commands
+samples, sample_rate = librosa.load(filepath + '/' + 'stop.wav', sr = 16000)
+samples = librosa.resample(samples, sample_rate, 8000)
+ipd.Audio(samples,rate=8000)  
+
+#converting voice commands to text
+predict(samples)
+
+
+
+
